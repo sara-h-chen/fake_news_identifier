@@ -25,6 +25,7 @@ def process_data(pairs, nlp):
 
 ### INITIAL
 
+# TODO: Change this to weblarge
 nlp = spacy.load('en', vectors='en_glove_cc_300_1m')
 
 df = pandas.read_csv('data/news_ds.csv')
@@ -47,7 +48,7 @@ test_ratio = 1 - train_ratio - val_ratio
 print("Splitting")
 
 X, X_test, y, y_test = train_test_split(data, labels, test_size=test_ratio)
-X_train, X_val, y_train, y_val = train_test_split(X, y, test_size = val_ratio/(1 - test_ratio))
+X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=val_ratio/(1 - test_ratio))
 
 dataset_size, num_timesteps, num_dimensions = X_train.shape
 
