@@ -14,14 +14,17 @@ from keras.layers import LSTM
 from keras.layers import Dropout
 from keras.layers import SimpleRNN
 from keras.layers import Flatten
-from keras.layers.embeddings import Embedding
 from keras.preprocessing.sequence import pad_sequences
-
-# Set seed for reproducability
-np.random.seed(1337)
 
 # Load spaCy once
 nlp = spacy.load('en_core_web_md')
+
+########################################################
+#                METRICS CALLBACK CLASS                #
+########################################################
+# Wrap scikit metrics into a class because Keras can   #
+# only provide these metrics as a callback function.   #
+########################################################
 
 class Metrics(Callback):
     def on_train_begin(self, logs={}):
@@ -41,10 +44,21 @@ class Metrics(Callback):
         self.recall.append(met.recall_score(targ, predict))
         self.f1s.append(met.f1_score(targ, predict))
         self.accuracy.append(met.accuracy_score(targ, predict))
-        print("Precision: {0}, Recall: {1}, F1 Score: {2},\nAccuracy: {3}".format(self.precision[-1], self.recall[-1], self.f1s[-1], self.accuracy[-1]))
+        print("Precision: {0}, Recall: {1}, F1 Score: {2},\nAccuracy: {3}".format(self.precision[-1],
+                                                                                  self.recall_score[-1], 
+                                                                                  self.f1s[-1], 
+                                                                                  self.accuracy[-1]))
         return
 
-metrics = Metrics()
+
+########################################################
+#                   LEMMA TOKENIZER                    #
+########################################################
+# Takes the base form of every word, and keeps it only #
+# if it's a valid word or phrase:                      #
+# https://stackoverflow.com/questions/45196312/spacy   #
+# -and-scikit-learn-vectorizer                         #
+########################################################
 
 class LemmaTokenizer(object):
 	def __init__(self):
@@ -54,6 +68,13 @@ class LemmaTokenizer(object):
 		nlpdoc = self.spacynlp(doc)
 		nlpdoc = [token.lemma_ for token in nlpdoc if (len(token.lemma_) > 1) or(token.lemma_.isalnum())]
 		return nlpdoc
+
+
+########################################################
+#                   WORD VECTORIZER                    #
+########################################################
+# Uses spaCy's inbuilt pre-trained word2vec model      #
+########################################################
 
 def string_to_wordvec(string, token):
 	tokens = token(string)
@@ -73,49 +94,81 @@ def vectorize_words(pairs, label_pairs, tokenizer):
 	return word_vecs, label_after_vec
 
 
-### INITIAL
-df = pandas.read_csv('data/news_ds.csv')
-# Remove HTML tags, digits, punctuation
-df['CLEAN'] = df['TEXT'].str.replace('<[^<]+?>|^\d+\s|\s\d+\s|\s\d+$|[^\w\s]', '')
+# Transform words into tokens
+def transform_words(x_dataframe, y_dataframe):
+	lemma_token = LemmaTokenizer()
+	data, labels = vectorize_words(x_dataframe.items(), y_dataframe.items(), lemma_token)
+	# Truncate longer to 1000 and pad shorter to 1000
+	data = pad_sequences(data, maxlen=1000, padding='post')
+	return data, labels
 
-# Work with a small subset
-num_sample = 30
-raw_data = df['CLEAN'][:num_sample]
-raw_labels = df['LABEL'][:num_sample]
 
-lemma_token = LemmaTokenizer()
-data, labels = vectorize_words(raw_data.items(), raw_labels.items(), lemma_token)
+########################################################
+#                  INPUT SANITIZER                     #
+########################################################
+# Sanitize: remove HTML tags, digits, punctuation
+def read_input(path_to_csv):
+	dataframe = pandas.read_csv(path_to_csv)
+	dataframe['CLEAN'] = dataframe['TEXT'].str.replace('<[^<]+?>|^\d+\s|\s\d+\s|\s\d+$|[^\w\s]', '')
+	return dataframe
 
-# Truncate longer to 1000 and pad shorter to 1000
-data = pad_sequences(data, maxlen=1000, padding='post')
 
-# Split ratios
-train_ratio, val_ratio = .7, .2
-test_ratio = 1 - train_ratio - val_ratio
-
-print("Splitting")
-
-X, X_test, y, y_test = train_test_split(data, labels, test_size=test_ratio)
-X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=val_ratio/(1 - test_ratio))
-
-dataset_size, num_timesteps, num_dimensions = X_train.shape
-
+########################################################
+#              SIMPLE RNN IMPLEMENTATION               #
+########################################################
 # Create model
-model = Sequential()
-model.add(SimpleRNN(20, activation='relu', return_sequences=True, input_shape=(num_timesteps, num_dimensions)))
-model.add(Dense(10, activation='relu'))
-model.add(Dropout(0.2))
-model.add(SimpleRNN(10, activation='relu', return_sequences=True))
-model.add(Flatten())
-model.add(Dense(1, activation='sigmoid'))
-# Loss is t * log(y) + (1 - t) * log (1 - y)
-sgd = optimizers.SGD(lr=0.01, clipvalue=0.5)
-model.compile(loss='binary_crossentropy', optimizer=sgd, metrics=['accuracy'])
+def create_model(timesteps, dimensions, train_data, train_labels, val_data, val_labels, mtrcs):
+    model = Sequential()
+    model.add(SimpleRNN(20, activation='relu', return_sequences=True, 
+                        input_shape=(timesteps, dimensions)))
+    model.add(Dense(10, activation='relu'))
+    model.add(Dropout(0.2))
+    model.add(SimpleRNN(10, activation='relu', return_sequences=True))
+    model.add(Flatten())
+    model.add(Dense(1, activation='sigmoid'))
+    # Loss is t * log(y) + (1 - t) * log (1 - y)
+    sgd = optimizers.SGD(lr=0.01, clipvalue=0.5)
+    model.compile(loss='binary_crossentropy', optimizer=sgd, metrics=['accuracy'])
 
-print("Fitting")
-model.fit(X_train, y_train, epochs=3, batch_size=1, verbose=2, validation_data=[X_val, y_val], callbacks=[metrics])
+    print("Fitting")
+    model.fit(train_data, train_labels, epochs=3, batch_size=1, verbose=2, validation_data=[val_data, val_labels], callbacks=[mtrcs])
+    scores = model.evaluate(X_val, y_val, verbose=0)
+    print('Accuracy on validation: %.5f' % (scores[1]*100))
+    return model
 
-print("Predicting")
 
-scores = model.evaluate(X_val, y_val, verbose=0)
-print('Accuracy: %.5f' % (scores[1]*100))
+########################################################
+#                     MAIN METHOD                      #
+########################################################
+
+if __name__ == '__main__':
+	# SETUP
+	# Set seed for reproducability
+	np.random.seed(1337)
+	metrics = Metrics()
+
+	dir_to_data = 'data/news_ds.csv'
+
+	df = read_input(dir_to_data)
+
+    # Work with a small subset
+    num_sample = 30
+    raw_data = df['CLEAN'][:num_sample]
+    raw_labels = df['LABEL'][:num_sample]
+
+    data, labels = transform_words(raw_data, raw_labels)
+
+    # Split ratios
+    train_ratio, val_ratio = .7, .2
+    test_ratio = 1 - train_ratio - val_ratio
+    print("Splitting")
+    X, X_test, y, y_test = train_test_split(data, labels, test_size=test_ratio)
+    X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=val_ratio/(1 - test_ratio))
+
+    dataset_size, num_timesteps, num_dimensions = X_train.shape
+
+    rnn_model = create_model(num_timesteps, num_dimensions, X_train, y_train, X_val, y_val, metrics)
+
+    print("Predicting")
+    # TODO: Implement testing
+

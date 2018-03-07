@@ -1,4 +1,3 @@
-import argparse
 import pandas
 import re
 import numpy as np
@@ -13,7 +12,6 @@ from keras.models import Sequential
 from keras.layers import Dense
 from keras.layers import LSTM
 from keras.layers import Dropout
-from keras.layers.embeddings import Embedding
 from keras.preprocessing.sequence import pad_sequences
 
 # Load spaCy once
@@ -45,7 +43,7 @@ class Metrics(Callback):
         self.f1s.append(met.f1_score(targ, predict))
         self.accuracy.append(met.accuracy_score(targ, predict))
         print("Precision: {0}, Recall: {1}, F1 Score: {2},\nAccuracy: {3}".format(self.precision[-1],
-		                                                                          self.recall[-1],
+		                                                                          self.recall_score[-1],
 																				  self.f1s[-1],
 																				  self.accuracy[-1]))
         return
@@ -99,7 +97,7 @@ def transform_words(x_dataframe, y_dataframe):
 	data, labels = vectorize_words(x_dataframe.items(), y_dataframe.items(), lemma_token)
 	# Truncate longer to 1000 and pad shorter to 1000
 	data = pad_sequences(data, maxlen=1000, padding='post')
-	return data
+	return data, labels
 
 
 ########################################################
@@ -116,7 +114,7 @@ def read_input(path_to_csv):
 #              LSTM MODEL IMPLEMENTATION               #
 ########################################################
 # Create model
-def create_model(timesteps, dimensions, train_data, train_labels, val_data, val_labels):
+def create_model(timesteps, dimensions, train_data, train_labels, val_data, val_labels, mtrcs):
 	model = Sequential()
 	model.add(LSTM(20, input_shape=(timesteps, dimensions), 
 	          activation='relu', return_sequences=True))
@@ -130,7 +128,7 @@ def create_model(timesteps, dimensions, train_data, train_labels, val_data, val_
 
 	print("Fitting")
 	model.fit(train_data, train_labels, epochs=3, batch_size=1, verbose=2, 
-	          validation_data=[val_data, val_labels], callbacks=[metrics])
+	          validation_data=[val_data, val_labels], callbacks=[mtrcs])
 	scores = model.evaluate(X_val, y_val, verbose=0)
 	print('Accuracy on validation: %.5f' % (scores[1]*100))
 	return model
@@ -155,7 +153,7 @@ if __name__ == '__main__':
 	raw_data = df['CLEAN'][:num_sample]
 	raw_labels = df['LABEL'][:num_sample]
 
-	data = transform_words(raw_data, raw_labels)
+	data, labels = transform_words(raw_data, raw_labels)
 
 	# Split ratios
 	train_ratio, val_ratio = .7, .2
@@ -166,7 +164,7 @@ if __name__ == '__main__':
 
 	dataset_size, num_timesteps, num_dimensions = X_train.shape
 
-	lstm_model = create_model(num_timesteps, num_dimensions, X_train, y_train, X_val, y_val)
+	lstm_model = create_model(num_timesteps, num_dimensions, X_train, y_train, X_val, y_val, metrics)
 	
 	print("Predicting")
 	# TODO: Implement testing
