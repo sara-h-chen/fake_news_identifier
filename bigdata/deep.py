@@ -2,10 +2,12 @@ import pandas
 import re
 import numpy as np
 import spacy
+
+import sklearn.metrics as met
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import confusion_matrix
 
 from keras import optimizers
+from keras.callbacks import Callback
 from keras.models import Sequential
 from keras.layers import Dense
 from keras.layers import LSTM
@@ -21,24 +23,29 @@ np.random.seed(1337)
 # Load spaCy once
 nlp = spacy.load('en_core_web_md')
 
-class MetricsCallback(Callback):
-    def __init__(self, train_data, validation_data):
-        super().__init__()
-        self.validation_data = validation_data
-        self.train_data = train_data
+
+class Metrics(Callback):
+    def on_train_begin(self, logs={}):
+        self.confusion = []
+        self.precision = []
+        self.recall = []
+        self.f1s = []
+        self.accuracy = []
 
     def on_epoch_end(self, epoch, logs={}):
-        X_train = self.train_data[0]
-        y_train = self.train_data[1]
+        score = np.asarray(self.model.predict(self.validation_data[0]))
+        predict = np.round(np.asarray(self.model.predict(self.validation_data[0])))
+        targ = self.validation_data[1]
 
-        X_val = self.validation_data[0]
-        y_val = self.validation_data[1]
+        self.confusion.append(met.confusion_matrix(targ, predict))
+        self.precision.append(met.precision_score(targ, predict))
+        self.recall.append(met.recall_score(targ, predict))
+        self.f1s.append(met.f1_score(targ, predict))
+        self.accuracy.append(met.accuracy_score(targ, predict))
+        print("Precision: {0}, Recall: {1}, F1 Score: {2},\nAccuracy: {3}".format(self.precision[-1], self.recall[-1], self.f1s[-1], self.accuracy[-1]))
+        return
 
-        accuracy = met.accuracy_score(y_test, y_pred)
-		precision = met.precision_score(y_test, y_pred)
-		recall = met.recall_score(y_test, y_pred)
-		F1 = met.f1_score(y_test, y_pred)
-		print("Accuracy: {0}, Precision: {1}, Recall: {2}, F1: {3}".format(accuracy, precision, recall, F1))
+metrics = Metrics()
 
 class LemmaTokenizer(object):
 	def __init__(self):
@@ -107,8 +114,7 @@ sgd = optimizers.SGD(lr=0.01, clipvalue=0.5)
 model.compile(loss='binary_crossentropy', optimizer=sgd, metrics=['accuracy'])
 
 print("Fitting")
-metrics_callback = MetricsCallback(train_data=(X_train, y_train), validation_data=(X_val, y_val))
-model.fit(X_train, y_train, epochs=3, batch_size=1, verbose=2, validation_data=[X_val, y_val])
+model.fit(X_train, y_train, epochs=3, batch_size=1, verbose=2, validation_data=[X_val, y_val], callbacks=[metrics])
 
 print("Predicting")
 
