@@ -131,7 +131,7 @@ if __name__ == '__main__':
 	df = read_input(dir_to_data)
 
 	# Work with a small subset
-	num_sample = 250
+	num_sample = 50
 	raw_data = df['CLEAN'][:]
 	raw_labels = df['LABEL'][:]
 
@@ -148,5 +148,5 @@ if __name__ == '__main__':
 	print("Fitting")
 	print("Predicting")
 	predicted_label = fit_mnb(X_train_datamatrix, X_test_datamatrix, y_train)
-	calc_metrics(true_y, y_pred)
+	calc_metrics(true_y, predicted_label)
 	
