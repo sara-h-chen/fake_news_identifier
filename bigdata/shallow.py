@@ -1,3 +1,4 @@
+import argparse
 import pandas
 import re
 import spacy
@@ -18,6 +19,16 @@ from sklearn.naive_bayes import MultinomialNB
 from sklearn.model_selection import train_test_split
 from sklearn.feature_extraction.text import TfidfVectorizer
 
+
+########################################################
+#                   LEMMA TOKENIZER                    #
+########################################################
+# Takes the base form of every word, and keeps it only #
+# if it's a valid word or phrase:                      #
+# https://stackoverflow.com/questions/45196312/spacy   #
+# -and-scikit-learn-vectorizer                         #
+########################################################
+
 class LemmaTokenizer(object):
 	def __init__(self):
 		self.spacynlp = spacy.load('en')
@@ -27,57 +38,115 @@ class LemmaTokenizer(object):
 		nlpdoc = [token.lemma_ for token in nlpdoc if (len(token.lemma_) > 1) or(token.lemma_.isalnum())]
 		return nlpdoc
 
-# Set seed for reproducability
-np.random.seed(1337)
 
-# TODO: Put everything into functions
-### INITIAL
-df = pandas.read_csv('data/news_ds.csv')
-# Remove HTML tags, digits, punctuation
-df['CLEAN'] = df['TEXT'].str.replace('<[^<]+?>|^\d+\s|\s\d+\s|\s\d+$|[^\w\s]', '')
+########################################################
+#                  INPUT SANITIZER                     #
+########################################################
+# Sanitize: remove HTML tags, digits, punctuation
+def read_input(path_to_csv):
+	dataframe = pandas.read_csv(path_to_csv)
+	dataframe['CLEAN'] = dataframe['TEXT'].str.replace('<[^<]+?>|^\d+\s|\s\d+\s|\s\d+$|[^\w\s]', '')
+	return dataframe
 
-# Work with a small subset
-num_sample = 250
-raw_data = df['CLEAN'][:]
-raw_labels = df['LABEL'][:]
-# Split ratios
-# 75% training, 25% test
-train_ratio, val_ratio = .75, .0
-test_ratio = 1 - train_ratio - val_ratio
 
-print("Splitting")
-# sklearn randomly removes the training set
-# X_df and X_test_df gives back the text itself
-# y_df and y_test_df gives back the labels
-X_train, X_test, y_train, y_test = train_test_split(raw_data, raw_labels, test_size=test_ratio, random_state=1337)
+########################################################
+#                    DATA SPLITTER                     #
+########################################################
+# Use sklearn to randomly partition the data set:      #
+# - X_df and X_test_df gives back the text itself      #
+# - y_df and true_y_df gives back the labels           #
+########################################################
 
-print("Counting")
+def split_data(data, labels, ratio):
+	trainx, testx, trainy, testy = train_test_split(data, labels, test_size=ratio, random_state=1337)
+	return trainx, testx, trainy, testy
 
+
+########################################################
+#                 TF-IDF VECTORIZER                    #
+########################################################
+# Use sklearn's inbuilt tf-idf vectorizer.             #
+# Attaches the lemma tokenizer. Produces 3- to 5-gram. #
+# Converts everything to lowercase when preprocessing. #
+########################################################
 # Apply transformations
-tf = TfidfVectorizer(input='content', lowercase=True, analyzer='word', ngram_range=(3,5), min_df=0, stop_words=STOP_WORDS, tokenizer=LemmaTokenizer())
-X_train_dtm = tf.fit_transform(X_train)
-X_test_dtm = tf.transform(X_test)
+def calculate_tfidf(use_tfidf, trainx, testx):
+	tf = TfidfVectorizer(input='content', lowercase=True, analyzer='word', 
+	                     ngram_range=(3,5), min_df=0, stop_words=STOP_WORDS, 
+						 tokenizer=LemmaTokenizer(), use_idf=use_tfidf)
+	X_train_dtm = tf.fit_transform(trainx)
+	X_test_dtm = tf.transform(testx)
+	return X_train_dtm, X_test_dtm
 
-print("Fitting")
 
+########################################################
+#              MULTINOMIAL NAIVE BAYES                 #
+########################################################
+# Positive outcome means real(1)
 # Fit
-clf = MultinomialNB()
-clf.fit(X_train_dtm, y_train)
+def fit_mnb(train_datamatrix, test_datamatrix, train_labels):
+	clf = MultinomialNB()
+	clf.fit(train_datamatrix, train_labels)
+	y_pred = clf.predict(test_datamatrix)
+	return y_pred
 
-print("Predicting")
 
-# Positive means real(1)
-y_pred = clf.predict(X_test_dtm)
+########################################################
+#                    PRINT METRICS                     #
+########################################################
 # tn, fn, fp, tp = cf_matrix.flatten()
 # accuracy = (tp + tn) / (tn + fp + fn + tp)
 # precision = tp / (tp + fp)
 # recall = tp / (tp + fn)
 # F1 = 2 * tp / (2 * tp + fp + fn)
-cf_matrix = met.confusion_matrix(y_test, y_pred)
-accuracy = met.accuracy_score(y_test, y_pred)
-precision = met.precision_score(y_test, y_pred)
-recall = met.recall_score(y_test, y_pred)
-F1 = met.f1_score(y_test, y_pred)
-null_accuracy = y_test.value_counts().head(1) / len(y_test)
-print("Accuracy: {0}, Precision: {1}, Recall: {2}, F1: {3}, \nNull Accuracy: {4}".format(accuracy, precision, recall, F1, null_accuracy))
+def calc_metrics(true_y, predicted_y):
+	cf_matrix = met.confusion_matrix(true_y, predicted_y)
+	accuracy = met.accuracy_score(true_y, predicted_y)
+	precision = met.precision_score(true_y, predicted_y)
+	recall = met.recall_score(true_y, predicted_y)
+	F1 = met.f1_score(true_y, predicted_y)
+	null_accuracy = true_y.value_counts().head(1) / len(true_y)
+	print("Accuracy: {0}, Precision: {1}, Recall: {2}, F1: {3}, \nNull Accuracy: {4}".format(accuracy, precision, recall, F1, null_accuracy))
+	return
 
+
+########################################################
+#                     MAIN METHOD                      #
+########################################################
+
+if __name__ == '__main__':
+	# Read from command line
+	use_idf = True
+	parser = argparse.ArgumentParser()
+	parser.add_argument("--no_idf", help="deactivates idf")
+	args = parser.parse_args()
+	if args.no_idf:
+		use_idf = False
+	
+	# SETUP
+	# Set seed for reproducability
+	np.random.seed(1337)
+	dir_to_data = 'data/news_ds.csv'
+
+	df = read_input(dir_to_data)
+
+	# Work with a small subset
+	num_sample = 250
+	raw_data = df['CLEAN'][:]
+	raw_labels = df['LABEL'][:]
+
+	# Split ratios
+	# 75% training, 25% test
+	train_ratio, val_ratio = .75, .0
+	test_ratio = 1 - train_ratio - val_ratio
+	print("Splitting")
+	X_train, X_test, y_train, true_y = split_data(raw_data, raw_labels, test_ratio)
+
+	print("Counting")
+	X_train_datamatrix, X_test_datamatrix = calculate_tfidf(use_idf, X_train, X_test)
+
+	print("Fitting")
+	print("Predicting")
+	predicted_label = fit_mnb(X_train_datamatrix, X_test_datamatrix, y_train)
+	calc_metrics(true_y, y_pred)
+	
