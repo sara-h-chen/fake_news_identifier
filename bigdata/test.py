@@ -151,24 +151,33 @@ def create_model(timesteps, dimensions, train_data, train_labels, val_data, val_
     model = Sequential()
     model.add(Embedding(timesteps, 300, weights=[embedding_matrix], input_length=1000, trainable=False))
     model.add(LSTM(20, input_shape=train_data.shape[1:], return_sequences=True, activation='relu'))
-    model.add(Dropout(0.2))
+    model.add(Dropout(0.02))
     model.add(LSTM(10, activation='relu'))
     model.add(Dense(1, activation='sigmoid'))
     # Loss is t * log(y) + (1 - t) * log (1 - y)
     # sgd = optimizers.SGD(lr=0.01, clipvalue=0.3)
     model.summary()
-    adam = optimizers.Adam(lr=0.005, beta_1=0.9, beta_2=0.999, epsilon=1e-3, decay=0.0, amsgrad=True)
+    adam = optimizers.Adam(lr=0.001, beta_1=0.9, beta_2=0.999, epsilon=1e-8, decay=0.0, amsgrad=False)
 
     model.compile(loss='binary_crossentropy', optimizer=adam, metrics=['accuracy'])
 
     # print(index_dict)
     # print(val_data, val_labels)
     print("Fitting")
-    model.fit(train_data, train_labels, epochs=3, batch_size=16, verbose=1,
+    model.fit(train_data, train_labels, epochs=3, batch_size=32, verbose=1,
               validation_data=(val_data, val_labels), callbacks=[mtrcs])
     scores = model.evaluate(val_data, val_labels, verbose=0)
     print('Accuracy on validation: %.5f' % (scores[1] * 100))
     return model
+
+
+########################################################
+#                  HELPER FUNCTIONS                    #
+########################################################
+
+# def read_json():
+#     with open("pickled_data.json", 'r') as f:
+#         reconstructed_summaries = np.zeroes((
 
 
 ########################################################
@@ -198,11 +207,17 @@ if __name__ == '__main__':
     data, labels = transform_words(raw_data, raw_labels, counter)
 
     with open('pickled_data.json', 'w') as outfile:
-        json.dump(transformed_articles, outfile)
+        json.dump(data, outfile)
+    with open('picked_labels.json', 'w') as outfile:
+        json.dump(labels, outfile)
+    with open('pickled_indices.json', 'w') as outfile:
+        serializable_dict = {k: v.tolist() for k, v in word_dictionary.items()}
+        json.dump(serializable_dict, outfile)
+    with open('pickled_words.json', 'w') as outfile:
+        json.dump(index_dict, outfile)
 
     print("Reading: ", time.time() - t0, "seconds wall time")
 
-    exit()
     t0 = time.time()
     # Split ratios
     train_ratio, val_ratio = .7, .2
