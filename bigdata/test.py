@@ -18,9 +18,10 @@ from keras.layers import LSTM
 from keras.layers import Dropout
 from keras.layers import Embedding
 from keras.preprocessing.sequence import pad_sequences
+from keras.preprocessing.text import one_hot
 
 # Load spaCy once
-nlp = spacy.load('en_core_web_md')
+nlp = spacy.load('en_core_web_lg')
 
 index_dict = {}
 word_dictionary = {}
@@ -50,7 +51,7 @@ class Metrics(Callback):
         self.recall.append(met.recall_score(targ, predict))
         self.f1s.append(met.f1_score(targ, predict))
         self.accuracy.append(met.accuracy_score(targ, predict))
-        print("Precision: {0}, Recall: {1}, F1 Score: {2},\nAccuracy: {3}".format(self.precision[-1],
+        print("\nPrecision: {0}, Recall: {1}, F1 Score: {2},\nAccuracy: {3}".format(self.precision[-1],
                                                                                   self.recall[-1],
                                                                                   self.f1s[-1],
                                                                                   self.accuracy[-1]))
@@ -93,11 +94,12 @@ def create_embedding_matrix(bag_of_words):
 def string_to_wordvec(string, ctr):
     returned_sentence = []
     for token in string:
-        if token in nlp.vocab:
-            word_dictionary[token] = nlp(token).vector
+        # if token is unseen
         if token not in index_dict:
             index_dict[token] = ctr
             ctr += 1
+            if token in nlp.vocab:
+                word_dictionary[token] = nlp(token).vector
         returned_sentence.append(index_dict[token])
     return returned_sentence
 
@@ -105,10 +107,12 @@ def string_to_wordvec(string, ctr):
 def vectorize_words(pairs, label_pairs, index):
     vectorized_words = []
     # List containing ((id, string), (id, label))
-    label_after_vec = [x[1] for x in label_pairs]
+    article_count = 0
     for string in pairs:
         vectorized_words.append(string_to_wordvec(string, index))
-    return vectorized_words, label_after_vec
+        print("Article %d transformed" % article_count)
+        article_count += 1
+    return vectorized_words, [x for x in label_pairs]
 
 
 # Transform words into tokens
@@ -126,7 +130,7 @@ def transform_words(x_dataframe, y_dataframe, counter):
 # Remove stop words
 def read_input(path_to_csv):
     dataframe = pandas.read_csv(path_to_csv)
-    dataframe['CLEAN'] = dataframe['TEXT'].str.lower().str.replace('<[^<]+?>|^\d+\s|\s\d+\s|\s\d+$|[^\w\s]|^https?:\/\/.*[\r\n]*', '')
+    dataframe['CLEAN'] = dataframe['TEXT'].str.lower().str.replace('<[^<]+?>|^\d+\s|\s\d+\s|\s\d+$|[^\w\s]|^$
     dataframe['SPLIT'] = dataframe['CLEAN'].str.split()
     dataframe['SPLIT'] = dataframe['SPLIT'].apply(lambda x: [item for item in x if item not in STOP_WORDS])
     # print(dataframe['SPLIT'])
@@ -137,25 +141,26 @@ def read_input(path_to_csv):
 #              LSTM MODEL IMPLEMENTATION               #
 ########################################################
 # Create model
-def create_model(timesteps, dimensions, train_data, train_labels, val_data, val_labels, mtrcs, embedding_matrix):
+def create_model(timesteps, dimensions, train_data, train_labels, val_data, val_labels, mtrcs, embedding_mat$
     model = Sequential()
-    model.add(Embedding(timesteps, 300, weights=[embedding_matrix], input_length=1000))
-    model.add(LSTM(20, input_shape=(timesteps, dimensions),
-                   activation='relu'))
-    model.add(Dense(10, activation='relu'))
+    model.add(Embedding(timesteps, 300, weights=[embedding_matrix], input_length=1000, trainable=False))
+    model.add(LSTM(20, input_shape=train_data.shape[1:], return_sequences=True, activation='relu'))
     model.add(Dropout(0.2))
-    model.add(LSTM(10, input_shape=(timesteps, dimensions), activation='relu'))
+    model.add(LSTM(10, activation='relu'))
     model.add(Dense(1, activation='sigmoid'))
     # Loss is t * log(y) + (1 - t) * log (1 - y)
     # sgd = optimizers.SGD(lr=0.01, clipvalue=0.3)
-    adam = optimizers.Adam(lr=0.001, beta_1=0.9, beta_2=0.999, epsilon=1e-3, decay=0.0, amsgrad=True)
+    model.summary()
+    adam = optimizers.Adam(lr=0.005, beta_1=0.9, beta_2=0.999, epsilon=1e-3, decay=0.0, amsgrad=True)
 
     model.compile(loss='binary_crossentropy', optimizer=adam, metrics=['accuracy'])
 
+    # print(index_dict)
+    # print(val_data, val_labels)
     print("Fitting")
-    model.fit(train_data, train_labels, epochs=3, batch_size=5, verbose=1,
-              validation_data=[val_data, val_labels], callbacks=[mtrcs])
-    scores = model.evaluate(X_val, y_val, verbose=0)
+    model.fit(train_data, train_labels, epochs=3, batch_size=16, verbose=1,
+              validation_data=(val_data, val_labels), callbacks=[mtrcs])
+    scores = model.evaluate(val_data, val_labels, verbose=0)
     print('Accuracy on validation: %.5f' % (scores[1] * 100))
     return model
 
@@ -178,7 +183,7 @@ if __name__ == '__main__':
     df = read_input(dir_to_data)
 
     # Work with a small subset
-    num_sample = 50
+    num_sample = 500
     raw_data = df['SPLIT'][:num_sample]
     raw_labels = df['LABEL'][:num_sample]
 
@@ -191,9 +196,9 @@ if __name__ == '__main__':
     # Split ratios
     train_ratio, val_ratio = .7, .2
     test_ratio = 1 - train_ratio - val_ratio
-    print("Splitting")
     X, X_test, y, y_test = train_test_split(data, labels, test_size=test_ratio, random_state=1337)
-    X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=val_ratio / (1 - test_ratio), random_state=1337)
+    X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=val_ratio / (1 - test_ratio), random_s$
+    print("Splitting into %d train, %d validation and %d test" % (len(X_train), len(X_val), len(X_test)))
 
     e_matrix = create_embedding_matrix(word_dictionary)
 
@@ -201,7 +206,7 @@ if __name__ == '__main__':
 
     num_timesteps, num_dimensions = e_matrix.shape
 
-    lstm_model = create_model(num_timesteps, num_dimensions, train_data, train_labels, val_data, val_labels, metrics, e_matrix)
+    lstm_model = create_model(num_timesteps, num_dimensions, np.array(X_train), np.array(y_train), np.array($
 
     # print("Predicting")
     # TODO: Implement testing

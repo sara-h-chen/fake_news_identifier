@@ -2,6 +2,8 @@ import pandas
 import numpy as np
 import spacy
 
+from spacy.lang.en.stop_words import STOP_WORDS
+
 import sklearn.metrics as met
 from sklearn.model_selection import train_test_split
 
@@ -16,6 +18,7 @@ from keras.preprocessing.sequence import pad_sequences
 # Load spaCy once
 nlp = spacy.load('en_core_web_md')
 
+encoded_docs = []
 
 ########################################################
 #                METRICS CALLBACK CLASS                #
@@ -76,7 +79,7 @@ class LemmaTokenizer(object):
 
 def string_to_wordvec(string, token):
     tokens = token(string)
-    return np.array([nlp(token).vector for token in tokens])
+    return np.array([nlp(token).vector for token in tokens if not in STOP_WORDS])
 
 
 def vectorize_words(pairs, label_pairs, tokenizer):
@@ -129,9 +132,10 @@ def create_model(timesteps, dimensions, train_data, train_labels, val_data, val_
     model.compile(loss='binary_crossentropy', optimizer=sgd, metrics=['accuracy'])
 
     print("Fitting")
-    model.fit(train_data, train_labels, epochs=3, batch_size=1, verbose=2,
+    model.fit(train_data, train_labels, epochs=3, batch_size=1, verbose=1,
               validation_data=[val_data, val_labels], callbacks=[mtrcs])
     scores = model.evaluate(X_val, y_val, verbose=0)
+    model.summary
     print('Accuracy on validation: %.5f' % (scores[1] * 100))
     return model
 
@@ -151,7 +155,7 @@ if __name__ == '__main__':
     df = read_input(dir_to_data)
 
     # Work with a small subset
-    num_sample = 10
+    num_sample = 5
     raw_data = df['CLEAN'][:num_sample]
     raw_labels = df['LABEL'][:num_sample]
 
@@ -161,8 +165,8 @@ if __name__ == '__main__':
     train_ratio, val_ratio = .7, .2
     test_ratio = 1 - train_ratio - val_ratio
     print("Splitting")
-    X, X_test, y, y_test = train_test_split(data, labels, test_size=test_ratio)
-    X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=val_ratio / (1 - test_ratio))
+    X, X_test, y, y_test = train_test_split(data, labels, test_size=test_ratio, random_state=1337)
+    X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=val_ratio / (1 - test_ratio), random_state=1337)
 
     dataset_size, num_timesteps, num_dimensions = X_train.shape
 
@@ -170,4 +174,3 @@ if __name__ == '__main__':
 
     print("Predicting")
     # TODO: Implement testing
-
