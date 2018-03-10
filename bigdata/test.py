@@ -4,6 +4,7 @@ import numpy as np
 import spacy
 import time
 import re
+import json
 
 from spacy.lang.en.stop_words import STOP_WORDS
 
@@ -25,6 +26,8 @@ nlp = spacy.load('en_core_web_lg')
 
 index_dict = {}
 word_dictionary = {}
+# Keep track of transformed articles to pickle
+transformed_articles = {}
 
 ########################################################
 #                METRICS CALLBACK CLASS                #
@@ -109,7 +112,10 @@ def vectorize_words(pairs, label_pairs, index):
     # List containing ((id, string), (id, label))
     article_count = 0
     for string in pairs:
-        vectorized_words.append(string_to_wordvec(string, index))
+        transformed_sentence = string_to_wordvec(string, index)
+        vectorized_words.append(transformed_sentence)
+        # DEBUG: Take this out when not pickling
+        transformed_articles[article_count] = transformed_sentence
         print("Article %d transformed" % article_count)
         article_count += 1
     return vectorized_words, [x for x in label_pairs]
@@ -128,10 +134,10 @@ def transform_words(x_dataframe, y_dataframe, counter):
 ########################################################
 # Sanitize: remove HTML tags, digits, punctuation
 # Remove stop words
-def read_input(path_to_csv):
+def read_input(path_to_csv, lemmatizer):
     dataframe = pandas.read_csv(path_to_csv)
-    dataframe['CLEAN'] = dataframe['TEXT'].str.lower().str.replace('<[^<]+?>|^\d+\s|\s\d+\s|\s\d+$|[^\w\s]|^$
-    dataframe['SPLIT'] = dataframe['CLEAN'].str.split()
+    dataframe['CLEAN'] = dataframe['TEXT'].str.lower().str.replace('<[^<]+?>|^\d+\s|\s\d+\s|\s\d+$|[^\w\s]|^https?:\/\/.*[\r\n]*', '')
+    dataframe['SPLIT'] = dataframe['CLEAN'].apply(lambda x: lemmatizer(x))
     dataframe['SPLIT'] = dataframe['SPLIT'].apply(lambda x: [item for item in x if item not in STOP_WORDS])
     # print(dataframe['SPLIT'])
     return dataframe
@@ -141,7 +147,7 @@ def read_input(path_to_csv):
 #              LSTM MODEL IMPLEMENTATION               #
 ########################################################
 # Create model
-def create_model(timesteps, dimensions, train_data, train_labels, val_data, val_labels, mtrcs, embedding_mat$
+def create_model(timesteps, dimensions, train_data, train_labels, val_data, val_labels, mtrcs, embedding_matrix):
     model = Sequential()
     model.add(Embedding(timesteps, 300, weights=[embedding_matrix], input_length=1000, trainable=False))
     model.add(LSTM(20, input_shape=train_data.shape[1:], return_sequences=True, activation='relu'))
@@ -180,7 +186,8 @@ if __name__ == '__main__':
     print("Reading data")
     dir_to_data = 'data/news_ds.csv'
 
-    df = read_input(dir_to_data)
+    tokenizer = LemmaTokenizer()
+    df = read_input(dir_to_data, tokenizer)
 
     # Work with a small subset
     num_sample = 500
@@ -190,14 +197,18 @@ if __name__ == '__main__':
     counter = 0
     data, labels = transform_words(raw_data, raw_labels, counter)
 
+    with open('pickled_data.json', 'w') as outfile:
+        json.dump(transformed_articles, outfile)
+
     print("Reading: ", time.time() - t0, "seconds wall time")
 
+    exit()
     t0 = time.time()
     # Split ratios
     train_ratio, val_ratio = .7, .2
     test_ratio = 1 - train_ratio - val_ratio
     X, X_test, y, y_test = train_test_split(data, labels, test_size=test_ratio, random_state=1337)
-    X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=val_ratio / (1 - test_ratio), random_s$
+    X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=val_ratio / (1 - test_ratio), random_state=1337)
     print("Splitting into %d train, %d validation and %d test" % (len(X_train), len(X_val), len(X_test)))
 
     e_matrix = create_embedding_matrix(word_dictionary)
@@ -206,7 +217,7 @@ if __name__ == '__main__':
 
     num_timesteps, num_dimensions = e_matrix.shape
 
-    lstm_model = create_model(num_timesteps, num_dimensions, np.array(X_train), np.array(y_train), np.array($
+    lstm_model = create_model(num_timesteps, num_dimensions, np.array(X_train), np.array(y_train), np.array(X_val), np.array(y_val), metrics, np.array(e_matrix))
 
     # print("Predicting")
     # TODO: Implement testing
