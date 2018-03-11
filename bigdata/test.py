@@ -6,6 +6,7 @@ import time
 import re
 import json
 import operator
+import string
 
 from collections import Counter
 
@@ -25,10 +26,10 @@ from keras.layers import Embedding
 from keras.preprocessing.sequence import pad_sequences
 
 # Load spaCy once
-nlp = spacy.load('en_core_web_md')
+nlp = spacy.load('en_core_web_lg')
 
 # vocabulary = set()
-common_words = set()
+common_words = {'*EMPTY*'}
 counter = Counter()
 
 ########################################################
@@ -97,8 +98,10 @@ def create_embedding_matrix(label_encoder, max_valid, sorted_list):
 
 
 def string_to_wordvec(string, label_encoder):
-    string = [x for x in string if x in common_words]
-    transformed_sentence = label_encoder.transform(string)
+    filtered = [x if x in common_words else '*EMPTY*' for x in string]
+    if not filtered:
+        filtered = ['*EMPTY*']
+    transformed_sentence = label_encoder.transform(filtered)
     return transformed_sentence
 
 
@@ -145,6 +148,10 @@ def increment_count(list_of_words):
     return
 
 
+# def save(X_train, X_val, y_train, y_val, X_test, y_test):
+    
+
+
 ########################################################
 #                  INPUT SANITIZER                     #
 ########################################################
@@ -157,7 +164,8 @@ def read_input(path_to_csv):
     dataframe = dataframe.replace(r'^\s*$', np.nan, regex=True)
     dataframe = dataframe.dropna()
     dataframe['SPLIT'] = dataframe['CLEAN'].str.split()
-    dataframe['SPLIT'] = dataframe['SPLIT'].apply(lambda x: [item for item in x if item not in STOP_WORDS])
+    dataframe['SPLIT'] = dataframe['SPLIT'].apply(lambda x: [item for item in x if item not in STOP_WORDS and len(item) > 1])
+    dataframe['SPLIT'].apply(lambda x: filter(None, x))
     dataframe['SPLIT'].apply(lambda x: increment_count(x))
     # dataframe['SPLIT'].apply(lambda x: vocabulary.update(x))
     # print(dataframe['SPLIT'])
@@ -177,7 +185,7 @@ def create_model(timesteps, dimensions, train_data, train_labels, val_data, val_
     model.add(embedding_layer)
     model.add(LSTM(20, input_shape=train_data.shape[1:], return_sequences=True, activation='tanh'))
     model.add(Dropout(0.05))
-    model.add(LSTM(10, activation='tanh'))
+    model.add(LSTM(10, activation='relu'))
     model.add(Dense(1, activation='sigmoid'))
     # Loss is t * log(y) + (1 - t) * log (1 - y)
     # sgd = optimizers.SGD(lr=0.01, clipvalue=0.3)
@@ -215,8 +223,8 @@ if __name__ == '__main__':
 
     # Work with a small subset
     num_sample = 500
-    raw_data = df['SPLIT'][:num_sample]
-    raw_labels = df['LABEL'][:num_sample]
+    raw_data = df['SPLIT'][:]
+    raw_labels = df['LABEL'][:]
 
     # e_matrix = create_embedding_matrix(word_dictionary)
     max_recognized_words = 5000
