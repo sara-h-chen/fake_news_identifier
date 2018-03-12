@@ -52,11 +52,11 @@ class Metrics(Callback):
         predict = np.round(np.asarray(self.model.predict(self.validation_data[0])))
         targ = self.validation_data[1]
 
-        self.confusion.append(met.confusion_matrix(targ, predict))
-        self.precision.append(met.precision_score(targ, predict))
-        self.recall.append(met.recall_score(targ, predict))
-        self.f1s.append(met.f1_score(targ, predict))
-        self.accuracy.append(met.accuracy_score(targ, predict))
+        self.confusion.append(met.confusion_matrix(targ, predict.round()))
+        self.precision.append(met.precision_score(targ, predict.round()))
+        self.recall.append(met.recall_score(targ, predict.round()))
+        self.f1s.append(met.f1_score(targ, predict.round()))
+        self.accuracy.append(met.accuracy_score(targ, predict.round()))
         print("\nPrecision: {0}, Recall: {1}, F1 Score: {2},\nAccuracy: {3}".format(self.precision[-1],
                                                                                   self.recall[-1],
                                                                                   self.f1s[-1],
@@ -121,12 +121,11 @@ def vectorize_words(pairs, label_pairs, max_valid_words):
     embedding_matrix = create_embedding_matrix(le, max_valid_words, sorted_words)
     vectorized_words = []
     # List containing ((id, string), (id, label))
-    article_count = 0
-    for string_list in pairs:
+    printProgressBar(0, len(pairs), prefix = 'Progress:', suffix = 'Complete', length = 50)
+    for i, string_list in enumerate(pairs):
         transformed = string_to_wordvec(string_list, le)
         vectorized_words.append(transformed)
-        print("Article %d transformed" % article_count)
-        article_count += 1
+        printProgressBar(i + 1, len(pairs), prefix = 'Progress:', suffix = 'Complete', length = 50)
     return vectorized_words, label_pairs, embedding_matrix
 
 
@@ -148,9 +147,27 @@ def increment_count(list_of_words):
     return
 
 
-# def save(X_train, X_val, y_train, y_val, X_test, y_test):
+# Print iterations progress
+def printProgressBar (iteration, total, prefix = '', suffix = '', decimals = 1, length = 100, fill = '█'):
+    """
+    Call in a loop to create terminal progress bar
+    @params:
+        iteration   - Required  : current iteration (Int)
+        total       - Required  : total iterations (Int)
+        prefix      - Optional  : prefix string (Str)
+        suffix      - Optional  : suffix string (Str)
+        decimals    - Optional  : positive number of decimals in percent complete (Int)
+        length      - Optional  : character length of bar (Int)
+        fill        - Optional  : bar fill character (Str)
+    """
+    percent = ("{0:." + str(decimals) + "f}").format(100 * (iteration / float(total)))
+    filledLength = int(length * iteration // total)
+    bar = fill * filledLength + '-' * (length - filledLength)
+    print('\r%s |%s| %s%% %s' % (prefix, bar, percent, suffix), end = '\r')
+    # Print New Line on Complete
+    if iteration == total: 
+        print()
     
-
 
 ########################################################
 #                  INPUT SANITIZER                     #
@@ -183,9 +200,9 @@ def create_model(timesteps, dimensions, train_data, train_labels, val_data, val_
 
     model = Sequential()
     model.add(embedding_layer)
-    model.add(LSTM(20, input_shape=train_data.shape[1:], return_sequences=True, activation='tanh'))
-    model.add(Dropout(0.05))
-    model.add(LSTM(10, activation='relu'))
+    model.add(LSTM(32, input_shape=train_data.shape[1:], return_sequences=True, activation='tanh'))
+    model.add(Dropout(0.02))
+    model.add(LSTM(16, activation='relu'))
     model.add(Dense(1, activation='sigmoid'))
     # Loss is t * log(y) + (1 - t) * log (1 - y)
     # sgd = optimizers.SGD(lr=0.01, clipvalue=0.3)
@@ -216,15 +233,15 @@ if __name__ == '__main__':
 
     t0 = time.time()
 
-    print("Reading data")
+    print("Preprocessing data ...")
     dir_to_data = 'data/news_ds.csv'
 
     df = read_input(dir_to_data)
 
     # Work with a small subset
     num_sample = 500
-    raw_data = df['SPLIT'][:]
-    raw_labels = df['LABEL'][:]
+    raw_data = df['SPLIT'][:num_sample]
+    raw_labels = df['LABEL'][:num_sample]
 
     # e_matrix = create_embedding_matrix(word_dictionary)
     max_recognized_words = 5000
@@ -247,5 +264,6 @@ if __name__ == '__main__':
 
     lstm_model = create_model(num_timesteps, num_dimensions, np.array(X_train), np.array(y_train), np.array(X_val), np.array(y_val), metrics, np.array(e_matrix))
 
-    # print("Predicting")
+    print("Predicting")
     # TODO: Implement testing
+    
