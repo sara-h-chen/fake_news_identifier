@@ -37,7 +37,7 @@ class LemmaTokenizer(object):
 # Sanitize: remove HTML tags, digits, punctuation
 def read_input(path_to_csv):
     dataframe = pandas.read_csv(path_to_csv)
-    dataframe['CLEAN'] = dataframe['TEXT'].str.replace('<[^<]+?>|^\d+\s|\s\d+\s|\s\d+$|[^\w\s]', '')
+    dataframe['CLEAN'] = dataframe['TEXT'].str.replace('<[^<]+?>|^\d+\s|\s\d+\s|\s\d+$|[^\w\s]|\n', '')
     return dataframe
 
 

@@ -25,6 +25,8 @@ from keras.layers import Dropout
 from keras.layers import Embedding
 from keras.preprocessing.sequence import pad_sequences
 
+from keras.models import model_from_json
+
 # Load spaCy once
 nlp = spacy.load('en_core_web_lg')
 
@@ -91,9 +93,11 @@ class LemmaTokenizer(object):
 
 def create_embedding_matrix(label_encoder, max_valid, sorted_list):
     embedding_matrix = np.zeros((len(common_words), 300))
-    for word, appearances in sorted_list:
+    printProgressBar(0, len(common_words), prefix = 'Progress:', suffix = 'Complete', length = 50)
+    for i, (word, appearances) in enumerate(sorted_list):
         index = label_encoder.transform([word])
         embedding_matrix[index] = nlp(word).vector
+        # printProgressBar(i + 1, len(common_words), prefix = 'Progress:', suffix = 'Complete', length = 50)
     return embedding_matrix
 
 
@@ -125,7 +129,7 @@ def vectorize_words(pairs, label_pairs, max_valid_words):
     for i, string_list in enumerate(pairs):
         transformed = string_to_wordvec(string_list, le)
         vectorized_words.append(transformed)
-        printProgressBar(i + 1, len(pairs), prefix = 'Progress:', suffix = 'Complete', length = 50)
+        # printProgressBar(i + 1, len(pairs), prefix = 'Progress:', suffix = 'Complete', length = 50)
     return vectorized_words, label_pairs, embedding_matrix
 
 
@@ -201,13 +205,13 @@ def create_model(timesteps, dimensions, train_data, train_labels, val_data, val_
     model = Sequential()
     model.add(embedding_layer)
     model.add(LSTM(32, input_shape=train_data.shape[1:], return_sequences=True, activation='tanh'))
-    model.add(Dropout(0.02))
-    model.add(LSTM(16, activation='relu'))
+    model.add(Dropout(0.05))
+    model.add(LSTM(16, activation='tanh'))
     model.add(Dense(1, activation='sigmoid'))
     # Loss is t * log(y) + (1 - t) * log (1 - y)
     # sgd = optimizers.SGD(lr=0.01, clipvalue=0.3)
     model.summary()
-    adam = optimizers.Adam(lr=0.0003, beta_1=0.9, beta_2=0.999, epsilon=1e-3, decay=0.0, amsgrad=True)
+    adam = optimizers.Adam(lr=0.001, beta_1=0.9, beta_2=0.999, epsilon=1e-8, decay=0.0, amsgrad=True)
     # rmsprop = optimizers.RMSprop(lr=0.001)
     model.compile(loss='binary_crossentropy', optimizer=adam, metrics=['accuracy'])
 
@@ -240,11 +244,11 @@ if __name__ == '__main__':
 
     # Work with a small subset
     num_sample = 500
-    raw_data = df['SPLIT'][:num_sample]
-    raw_labels = df['LABEL'][:num_sample]
+    raw_data = df['SPLIT'][:]
+    raw_labels = df['LABEL'][:]
 
     # e_matrix = create_embedding_matrix(word_dictionary)
-    max_recognized_words = 5000
+    max_recognized_words = 20000
     data, labels, e_matrix = transform_words(raw_data, raw_labels, max_recognized_words)
 
     print("Reading: ", time.time() - t0, "seconds wall time")
@@ -267,3 +271,8 @@ if __name__ == '__main__':
     print("Predicting")
     # TODO: Implement testing
     
+    model_json = lstm_model.to_json()
+    with open("20000_cap.json", "w") as json_file:
+         json_file.write(model_json)
+    lstm_model.save_weights("5000_cap_model.h5")
+    print("Saved model to disk")
