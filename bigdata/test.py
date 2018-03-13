@@ -8,6 +8,8 @@ import json
 import operator
 import string
 
+import matplotlib.pyplot as plt
+
 from collections import Counter
 
 from spacy.lang.en.stop_words import STOP_WORDS
@@ -97,7 +99,7 @@ def create_embedding_matrix(label_encoder, max_valid, sorted_list):
     for i, (word, appearances) in enumerate(sorted_list):
         index = label_encoder.transform([word])
         embedding_matrix[index] = nlp(word).vector
-        # printProgressBar(i + 1, len(common_words), prefix = 'Progress:', suffix = 'Complete', length = 50)
+        printProgressBar(i + 1, len(common_words), prefix = 'Progress:', suffix = 'Complete', length = 50)
     return embedding_matrix
 
 
@@ -129,7 +131,7 @@ def vectorize_words(pairs, label_pairs, max_valid_words):
     for i, string_list in enumerate(pairs):
         transformed = string_to_wordvec(string_list, le)
         vectorized_words.append(transformed)
-        # printProgressBar(i + 1, len(pairs), prefix = 'Progress:', suffix = 'Complete', length = 50)
+        printProgressBar(i + 1, len(pairs), prefix = 'Progress:', suffix = 'Complete', length = 50)
     return vectorized_words, label_pairs, embedding_matrix
 
 
@@ -173,6 +175,18 @@ def printProgressBar (iteration, total, prefix = '', suffix = '', decimals = 1, 
         print()
     
 
+def evaluate_prediction(predict, targ):
+    precision = met.precision_score(targ, predict.round())
+    recall = met.recall_score(targ, predict.round())
+    f1s = met.f1_score(targ, predict.round())
+    accuracy = met.accuracy_score(targ, predict.round())
+    print("\nPrecision: {0}, Recall: {1}, F1 Score: {2},\nAccuracy: {3}".format(precision, 
+                                                                                recall,
+                                                                                f1s,
+                                                                                accuracy))
+    return
+
+
 ########################################################
 #                  INPUT SANITIZER                     #
 ########################################################
@@ -197,7 +211,7 @@ def read_input(path_to_csv):
 #              LSTM MODEL IMPLEMENTATION               #
 ########################################################
 # Create model
-def create_model(timesteps, dimensions, train_data, train_labels, val_data, val_labels, mtrcs, embedding_matrix):
+def create_model(timesteps, dimensions, train_data, train_labels, val_data, val_labels, mtrcs, embedding_matrix, test_data, test_labels):
     embedding_layer = Embedding(output_dim=300, input_dim=embedding_matrix.shape[0], trainable=False)
     embedding_layer.build((None,))
     embedding_layer.set_weights([embedding_matrix])
@@ -222,6 +236,20 @@ def create_model(timesteps, dimensions, train_data, train_labels, val_data, val_
               validation_data=(val_data, val_labels), callbacks=[mtrcs])
     scores = model.evaluate(val_data, val_labels, verbose=0)
     print('Accuracy on validation: %.5f' % (scores[1] * 100))
+
+    plt.plot(history.history['loss'])
+    plt.plot(history.history['val_loss'])
+    plt.title('Train vs Validation Loss')
+    plt.ylabel('Loss')
+    plt.xlabel('Epoch')
+    plt.legend(['Train', 'Validation'], loc='upper right')
+    plt.savefig('20000_full_loss.jpg')
+    
+    print("Predicting")
+    # TODO: Implement testing
+    prediction = model.predict_on_batch(test_data)
+    evaluate_prediction(prediction, test_labels)
+    
     return model
 
 
@@ -244,11 +272,11 @@ if __name__ == '__main__':
 
     # Work with a small subset
     num_sample = 500
-    raw_data = df['SPLIT'][:]
-    raw_labels = df['LABEL'][:]
+    raw_data = df['SPLIT'][:num_sample]
+    raw_labels = df['LABEL'][:num_sample]
 
     # e_matrix = create_embedding_matrix(word_dictionary)
-    max_recognized_words = 20000
+    max_recognized_words = 5000
     data, labels, e_matrix = transform_words(raw_data, raw_labels, max_recognized_words)
 
     print("Reading: ", time.time() - t0, "seconds wall time")
@@ -266,13 +294,10 @@ if __name__ == '__main__':
 
     num_timesteps, num_dimensions = e_matrix.shape
 
-    lstm_model = create_model(num_timesteps, num_dimensions, np.array(X_train), np.array(y_train), np.array(X_val), np.array(y_val), metrics, np.array(e_matrix))
+    lstm_model = create_model(num_timesteps, num_dimensions, np.array(X_train), np.array(y_train), np.array(X_val), np.array(y_val), metrics, np.array(e_matrix), np.array(X_test), np.array(y_test))
 
-    print("Predicting")
-    # TODO: Implement testing
-    
     model_json = lstm_model.to_json()
-    with open("20000_cap.json", "w") as json_file:
+    with open("5000_cap.json", "w") as json_file:
          json_file.write(model_json)
     lstm_model.save_weights("5000_cap_model.h5")
     print("Saved model to disk")
