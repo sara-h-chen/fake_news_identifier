@@ -24,6 +24,7 @@ from keras.callbacks import Callback
 from keras.models import Sequential
 from keras.layers import Dense
 from keras.layers import LSTM
+from keras.layers import SimpleRNN
 from keras.layers import Dropout
 from keras.layers import Embedding
 from keras.preprocessing.sequence import pad_sequences
@@ -216,15 +217,16 @@ def create_model(timesteps, dimensions, train_data, train_labels, val_data, val_
 
     model = Sequential()
     model.add(embedding_layer)
-    model.add(LSTM(32, input_shape=train_data.shape[1:], return_sequences=True, activation='tanh'))
+    model.add(SimpleRNN(32, input_shape=train_data.shape[1:], return_sequences=True, activation='tanh'))
     model.add(Dropout(0.05))
-    model.add(LSTM(16, activation='relu'))
+    model.add(SimpleRNN(16, activation='tanh'))
     model.add(Dense(1, activation='sigmoid'))
     # Loss is t * log(y) + (1 - t) * log (1 - y)
-    # sgd = optimizers.SGD(lr=0.01, clipvalue=0.3)
     model.summary()
+    # sgd = optimizers.SGD(lr=0.01, clipvalue=0.5)
     adam = optimizers.Adam(lr=0.001, beta_1=0.9, beta_2=0.999, epsilon=1e-3, decay=0.0, amsgrad=True)
     # rmsprop = optimizers.RMSprop(lr=0.001)
+    # adagrad = optimizers.Adagrad(lr=0.01)
     model.compile(loss='binary_crossentropy', optimizer=adam, metrics=['accuracy'])
 
     print("Fitting")
