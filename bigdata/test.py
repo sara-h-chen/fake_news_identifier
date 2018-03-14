@@ -9,6 +9,7 @@ import operator
 import string
 
 import matplotlib.pyplot as plt
+plt.switch_backend('agg')
 
 from collections import Counter
 
@@ -32,7 +33,6 @@ from keras.models import model_from_json
 # Load spaCy once
 nlp = spacy.load('en_core_web_lg')
 
-# vocabulary = set()
 common_words = {'*EMPTY*'}
 counter = Counter()
 
@@ -60,7 +60,7 @@ class Metrics(Callback):
         self.precision.append(met.precision_score(targ, predict.round()))
         self.recall.append(met.recall_score(targ, predict.round()))
         self.f1s.append(met.f1_score(targ, predict.round()))
-        self.accuracy.append(met.accuracy_score(targ, predict.round()))
+        self.accuracy.append(met.accuracy_score(targ, predict.round(), normalize=False))
         print("\nPrecision: {0}, Recall: {1}, F1 Score: {2},\nAccuracy: {3}".format(self.precision[-1],
                                                                                   self.recall[-1],
                                                                                   self.f1s[-1],
@@ -202,8 +202,6 @@ def read_input(path_to_csv):
     dataframe['SPLIT'] = dataframe['SPLIT'].apply(lambda x: [item for item in x if item not in STOP_WORDS and len(item) > 1])
     dataframe['SPLIT'].apply(lambda x: filter(None, x))
     dataframe['SPLIT'].apply(lambda x: increment_count(x))
-    # dataframe['SPLIT'].apply(lambda x: vocabulary.update(x))
-    # print(dataframe['SPLIT'])
     return dataframe
 
 
@@ -220,33 +218,30 @@ def create_model(timesteps, dimensions, train_data, train_labels, val_data, val_
     model.add(embedding_layer)
     model.add(LSTM(32, input_shape=train_data.shape[1:], return_sequences=True, activation='tanh'))
     model.add(Dropout(0.05))
-    model.add(LSTM(16, activation='tanh'))
+    model.add(LSTM(16, activation='relu'))
     model.add(Dense(1, activation='sigmoid'))
     # Loss is t * log(y) + (1 - t) * log (1 - y)
     # sgd = optimizers.SGD(lr=0.01, clipvalue=0.3)
     model.summary()
-    adam = optimizers.Adam(lr=0.001, beta_1=0.9, beta_2=0.999, epsilon=1e-8, decay=0.0, amsgrad=True)
+    adam = optimizers.Adam(lr=0.001, beta_1=0.9, beta_2=0.999, epsilon=1e-3, decay=0.0, amsgrad=True)
     # rmsprop = optimizers.RMSprop(lr=0.001)
     model.compile(loss='binary_crossentropy', optimizer=adam, metrics=['accuracy'])
 
-    # print(index_dict)
-    # print(val_data, val_labels)
     print("Fitting")
-    model.fit(train_data, train_labels, epochs=10, batch_size=16, verbose=1,
+    history = model.fit(train_data, train_labels, epochs=10, batch_size=16, verbose=1,
               validation_data=(val_data, val_labels), callbacks=[mtrcs])
     scores = model.evaluate(val_data, val_labels, verbose=0)
     print('Accuracy on validation: %.5f' % (scores[1] * 100))
 
-    plt.plot(history.history['loss'])
-    plt.plot(history.history['val_loss'])
-    plt.title('Train vs Validation Loss')
-    plt.ylabel('Loss')
-    plt.xlabel('Epoch')
-    plt.legend(['Train', 'Validation'], loc='upper right')
-    plt.savefig('20000_full_loss.jpg')
+    # plt.plot(history.history['loss'])
+    # plt.plot(history.history['val_loss'])
+    # plt.title('Train vs Validation Loss')
+    # plt.ylabel('Loss')
+    # plt.xlabel('Epoch')
+    # plt.legend(['Train', 'Validation'], loc='upper right')
+    # plt.savefig('500_20000.png')
     
-    print("Predicting")
-    # TODO: Implement testing
+    print("\n ================== PREDICTING ====================")
     prediction = model.predict_on_batch(test_data)
     evaluate_prediction(prediction, test_labels)
     
@@ -271,7 +266,7 @@ if __name__ == '__main__':
     df = read_input(dir_to_data)
 
     # Work with a small subset
-    num_sample = 500
+    num_sample = 500 
     raw_data = df['SPLIT'][:num_sample]
     raw_labels = df['LABEL'][:num_sample]
 
@@ -296,8 +291,8 @@ if __name__ == '__main__':
 
     lstm_model = create_model(num_timesteps, num_dimensions, np.array(X_train), np.array(y_train), np.array(X_val), np.array(y_val), metrics, np.array(e_matrix), np.array(X_test), np.array(y_test))
 
-    model_json = lstm_model.to_json()
-    with open("5000_cap.json", "w") as json_file:
-         json_file.write(model_json)
-    lstm_model.save_weights("5000_cap_model.h5")
-    print("Saved model to disk")
+    # model_json = lstm_model.to_json()
+    # with open("500_20000_cap.json", "w") as json_file:
+    #      json_file.write(model_json)
+    # lstm_model.save_weights("500_20000_cap_model.h5")
+    # print("Saved model to disk")
