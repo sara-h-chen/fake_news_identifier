@@ -37,7 +37,8 @@ class LemmaTokenizer(object):
 # Sanitize: remove HTML tags, digits, punctuation
 def read_input(path_to_csv):
     dataframe = pandas.read_csv(path_to_csv)
-    dataframe['CLEAN'] = dataframe['TEXT'].str.replace('<[^<]+?>|^\d+\s|\s\d+\s|\s\d+$|[^\w\s]|\n', '')
+    dataframe['CLEAN'] = dataframe['TEXT'].str.replace('<[^<]+?>|\d|[^\w\s]|^https?:\/\/.*[\r\n]*|\n', '')
+    print("Data processed")
     return dataframe
 
 
@@ -111,17 +112,13 @@ def calc_metrics(true_y, predicted_y):
 if __name__ == '__main__':
     # Read from command line
     use_idf = True
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--no_idf", help="deactivates idf")
-    args = parser.parse_args()
-    if args.no_idf:
-        use_idf = False
 
     # SETUP
     # Set seed for reproducability
     np.random.seed(1337)
     dir_to_data = 'data/news_ds.csv'
 
+    print("Reading data ...")
     df = read_input(dir_to_data)
 
     # Work with a small subset
