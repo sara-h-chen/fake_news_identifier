@@ -4,7 +4,6 @@ import spacy
 import numpy as np
 import sklearn.metrics as met
 
-
 from spacy.lang.en.stop_words import STOP_WORDS
 
 from sklearn.naive_bayes import MultinomialNB
@@ -23,7 +22,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 
 class LemmaTokenizer(object):
     def __init__(self):
-        self.spacynlp = spacy.load('en')
+        self.spacynlp = spacy.load('en_core_web_lg')
 
     def __call__(self, doc):
         nlpdoc = self.spacynlp(doc)
@@ -66,7 +65,7 @@ def split_data(data, labels, ratio):
 def calculate_tfidf(use_tfidf, trainx, testx):
     tf = TfidfVectorizer(input='content', lowercase=True, analyzer='word',
                          ngram_range=(3, 5), min_df=0, stop_words=STOP_WORDS,
-                         tokenizer=LemmaTokenizer(), use_idf=use_tfidf)
+                         tokenizer=None, use_idf=use_tfidf)
     X_train_dtm = tf.fit_transform(trainx)
     X_test_dtm = tf.transform(testx)
     return X_train_dtm, X_test_dtm
@@ -100,7 +99,7 @@ def calc_metrics(true_y, predicted_y):
     F1 = met.f1_score(true_y, predicted_y)
     null_accuracy = true_y.value_counts().head(1) / len(true_y)
     print(
-        "Accuracy: {0}, Precision: {1}, Recall: {2}, F1: {3}, \nNull Accuracy: {4}".format(accuracy, precision, recall,
+        "Accuracy: {0}, Precision: {1},\nRecall: {2}, F1: {3}, \nNull Accuracy: {4}".format(accuracy, precision, recall,
                                                                                            F1, null_accuracy))
     return
 
